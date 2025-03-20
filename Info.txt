@@ -1,0 +1,70 @@
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
+
+export const generatePDF = async (elementId: string, filename: string): Promise<void> => {
+  const element = document.getElementById(elementId);
+  if (!element) {
+    toast.error('Could not find the element to generate PDF');
+    return;
+  }
+
+  try {
+    toast.info('Preparing your PDF...');
+    
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    
+    let currentY = 0; // Tracks position on the current PDF page
+
+    const legBoxes = element.querySelectorAll('.leg-box');
+
+    for (let i = 0; i < legBoxes.length; i++) {
+      const legBox = legBoxes[i] as HTMLElement;
+
+      // Create a temporary container to render the leg-box
+      const tempContainer = document.createElement('div');
+      tempContainer.style.width = `${pageWidth}mm`;
+      tempContainer.style.padding = '10mm';
+      tempContainer.style.backgroundColor = 'white';
+
+      // Add header and itinerary section on the first page
+      if (i === 0) {
+        const header = element.querySelector('.aviation-header')?.cloneNode(true);
+        const info = element.querySelector('.itinerary-section')?.cloneNode(true);
+        if (header) tempContainer.appendChild(header);
+        if (info) tempContainer.appendChild(info);
+      }
+
+      tempContainer.appendChild(legBox.cloneNode(true));
+
+      // Temporarily add it to the document to measure its height
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      document.body.appendChild(tempContainer);
+      
+      // Convert to canvas to measure the content height
+      const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true, logging: false });
+      const imgData = canvas.toDataURL('image/png');
+      const imgHeight = (canvas.height * pageWidth) / canvas.width; // Scale height proportionally
+
+      document.body.removeChild(tempContainer); // Clean up
+
+      // 🛑 **Ensure Clean Page Breaks**
+      if (currentY + imgHeight > pageHeight) {
+        pdf.addPage();  // Start a new page
+        currentY = 0;   // Reset Y position
+      }
+
+      pdf.addImage(imgData, 'PNG', 0, currentY, pageWidth, imgHeight);
+      currentY += imgHeight; // Update the Y position
+    }
+    
+    pdf.save(filename);
+    toast.success('PDF downloaded successfully!');
+  } catch (error) {
+    console.error('Error generating PDF:', error);
+    toast.error('Failed to generate PDF. Please try again.');
+  }
+};
